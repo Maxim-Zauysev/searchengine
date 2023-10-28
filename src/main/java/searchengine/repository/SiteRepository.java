@@ -7,8 +7,8 @@ import searchengine.config.Site;
 import java.util.List;
 
 @Repository
-public interface SiteRepository extends CrudRepository<Site,Long> {
-    void deleteById(Long id);
+public interface SiteRepository extends CrudRepository<Site,Integer> {
+    void deleteById(Integer id);
     List<Site> findByUrl(String url);
     void deleteByUrl(String url);
     boolean existsByUrl(String url);

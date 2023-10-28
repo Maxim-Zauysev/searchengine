@@ -11,13 +11,14 @@ import searchengine.config.Site;
 import java.util.List;
 
 @Repository
-public interface PageRepository  extends CrudRepository<Page,Long> {
+public interface PageRepository  extends CrudRepository<Page,Integer> {
 
     boolean existsByPath(String path);
 
     @Modifying
     @Query(nativeQuery = true,value = "delete from page  where site_id=:siteId")
-    void deleteBySite(@Param("siteId") Long siteId);
+    void deleteBySite(@Param("siteId") Integer siteId);
 
 
+    List<Page> findBySite(Site site);
 }

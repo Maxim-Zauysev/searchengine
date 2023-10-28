@@ -15,6 +15,9 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.Page;
 import searchengine.config.Site;
@@ -32,7 +35,6 @@ import java.util.concurrent.ForkJoinPool;
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService  {
 
-
     @Autowired
     private SiteRepository siteRepository;
     @Autowired
@@ -42,22 +44,38 @@ public class IndexingServiceImpl implements IndexingService  {
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
 
     @Override
+    public void indexPage(String url) {
+        Site site = new Site();
+        site.setName(extractSiteName(url));
+        site.setUrl(url);
+        forkJoinPool.submit(() -> processSite(site));
+        System.out.println(url);
+    }
+
+    @Override
+    public void stopIndexing() {
+
+    }
+
+    @Override
+    @Transactional
     public void startIndexing() {
-
-
         List<Site> sitesToIndex = sites.getSites();
+//        List<Site> sitesToIndex = (List<Site>) siteRepository.findAll();
         sitesToIndex.forEach((site -> {
             forkJoinPool.submit(() -> processSite(site));
         }));
     }
 
-    private void processSite(Site site) {
+    @Transactional
+    void processSite(Site site) {
         try {
 
             if(siteRepository.existsByUrl(site.getUrl())){
                 pageRepository.deleteBySite(site.getId());
                 siteRepository.delete(site);
             }
+
             site.setStatus(SiteStatus.INDEXING);
             site.setStatusTime(LocalDateTime.now());
             siteRepository.save(site);
@@ -89,24 +107,40 @@ public class IndexingServiceImpl implements IndexingService  {
         }
     }
 
-    private void processPage(Site site, String url) {
+    @Transactional
+     void processPage(Site site, String url) {
         try {
             Page page = new Page();
             page.setPath(url);
             page.setSite(site);
 
-            Document pageDoc = Jsoup.connect(url)
+            Connection connection = Jsoup.connect(url)
                     .userAgent("HeliontSearchBot")
-                    .referrer("http://www.google.com")
-                    .get();
+                    .referrer("http://www.google.com");
+
+            Connection.Response response = connection.execute();
+            Document pageDoc = response.parse();
 
             page.setContent(pageDoc.html());
-            //200 временная заглушка
-            page.setCode(200);
+            page.setCode(response.statusCode());
 
             pageRepository.save(page);
         } catch (Exception e) {
         }
     }
-}
 
+    public static String extractSiteName(String url) {
+        try {
+            URI uri = new URI(url);
+            String host = uri.getHost();
+            if (host != null) {
+                // Удаляем www и вырезаем только доменное имя
+                host = host.startsWith("www.") ? host.substring(4) : host;
+                return host;
+            }
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+        return null; // Если не удалось извлечь имя сайта
+    }
+}

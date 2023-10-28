@@ -14,7 +14,7 @@ import java.util.List;
 public class Site {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", columnDefinition = "VARCHAR(255) NOT NULL")
@@ -34,4 +34,7 @@ public class Site {
 
     @OneToMany(mappedBy = "site",fetch = FetchType.LAZY)
     private List<Page> pages;
+
+    public Site() {
+    }
 }

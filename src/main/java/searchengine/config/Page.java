@@ -12,7 +12,7 @@ import javax.persistence.*;
     public class Page {
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
-        private Long id;
+        private Integer id;
 
         @ManyToOne
         @JoinColumn(name = "site_id", nullable = false)
@@ -27,4 +27,6 @@ import javax.persistence.*;
         @Column(columnDefinition = "MEDIUMTEXT NOT NULL")
         private String content;
 
+        public Page() {
+        }
     }
