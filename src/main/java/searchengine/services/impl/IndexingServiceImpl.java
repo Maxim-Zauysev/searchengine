@@ -3,12 +3,14 @@ package searchengine.services.impl;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
-import java.util.Set;
-import java.util.Stack;
+import java.util.*;
+
 import org.jsoup.Jsoup;
 import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
@@ -19,66 +21,72 @@ import java.net.URI;
 import java.net.URISyntaxException;
 
 import org.springframework.transaction.annotation.Transactional;
-import searchengine.config.Page;
-import searchengine.config.Site;
-import searchengine.config.SiteStatus;
-import searchengine.config.SitesList;
+import searchengine.TextAnalyzer;
+import searchengine.config.*;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 import searchengine.services.IndexingService;
+import searchengine.services.TransactionalService;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.concurrent.ForkJoinPool;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
-public class IndexingServiceImpl implements IndexingService  {
+public class IndexingServiceImpl implements IndexingService {
 
     @Autowired
     private SiteRepository siteRepository;
     @Autowired
     private PageRepository pageRepository;
+    @Autowired
+    private final LemmaRepository lemmaRepository;
+    @Autowired
+    private final IndexRepository indexRepository;
+    @Autowired
+    private TransactionalService transactionalService;
 
     private final SitesList sites;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
+    private final TextAnalyzer textAnalyzer = new TextAnalyzer();
 
     @Override
     public void indexPage(String url) {
-        Site site = new Site();
-        site.setName(extractSiteName(url));
-        site.setUrl(url);
-        forkJoinPool.submit(() -> processSite(site));
-        System.out.println(url);
+        if(isValidUrl(url)) {
+            Site site = new Site();
+            site.setName(extractSiteName(url));
+            site.setUrl(url);
+            forkJoinPool.submit(() -> processSite(site));
+        }else {
+            throw new IllegalArgumentException();
+        }
     }
 
+    //TODO:
     @Override
     public void stopIndexing() {
 
     }
 
     @Override
-    @Transactional
     public void startIndexing() {
         List<Site> sitesToIndex = sites.getSites();
-//        List<Site> sitesToIndex = (List<Site>) siteRepository.findAll();
         sitesToIndex.forEach((site -> {
             forkJoinPool.submit(() -> processSite(site));
         }));
     }
 
-    @Transactional
     void processSite(Site site) {
         try {
-
-            if(siteRepository.existsByUrl(site.getUrl())){
-                pageRepository.deleteBySite(site.getId());
-                siteRepository.delete(site);
-            }
+            transactionalService.deleteSiteAndPages(site);
 
             site.setStatus(SiteStatus.INDEXING);
             site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
+            Site savedSite = siteRepository.save(site);
 
             Document doc = Jsoup.connect(site.getUrl())
                     .userAgent("HeliontSearchBot")
@@ -90,13 +98,13 @@ public class IndexingServiceImpl implements IndexingService  {
             for (Element link : links) {
                 String url = link.absUrl("href");
 
-                if (!pageRepository.existsByPath(url)) {
-                    forkJoinPool.submit(() -> processPage(site, url));
+                if (url.startsWith(savedSite.getUrl()) && !pageRepository.existsByPath(url)) {
+                    forkJoinPool.submit(() -> processPage(savedSite, url));
                 }
             }
 
-            site.setStatus(SiteStatus.INDEXED);
-            site.setStatusTime(LocalDateTime.now());
+            savedSite.setStatus(SiteStatus.INDEXED);
+            savedSite.setStatusTime(LocalDateTime.now());
         } catch (Exception e) {
             site.setStatus(SiteStatus.FAILED);
             site.setLastError(e.getMessage());
@@ -107,9 +115,9 @@ public class IndexingServiceImpl implements IndexingService  {
         }
     }
 
-    @Transactional
-     void processPage(Site site, String url) {
+    void processPage(Site site, String url) {
         try {
+
             Page page = new Page();
             page.setPath(url);
             page.setSite(site);
@@ -121,13 +129,18 @@ public class IndexingServiceImpl implements IndexingService  {
             Connection.Response response = connection.execute();
             Document pageDoc = response.parse();
 
-            page.setContent(pageDoc.html());
+            String htmlContent = pageDoc.html();
+            page.setContent(htmlContent);
             page.setCode(response.statusCode());
 
             pageRepository.save(page);
+
+
         } catch (Exception e) {
+            e.printStackTrace();
         }
     }
+
 
     public static String extractSiteName(String url) {
         try {
@@ -143,4 +156,12 @@ public class IndexingServiceImpl implements IndexingService  {
         }
         return null; // Если не удалось извлечь имя сайта
     }
+
+    private boolean isValidUrl(String url) {
+        String urlPattern = "^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,4}(/\\S*)?$";
+        Pattern pattern = Pattern.compile(urlPattern);
+        Matcher matcher = pattern.matcher(url);
+        return matcher.matches();
+    }
+
 }

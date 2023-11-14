@@ -19,6 +19,5 @@ public interface PageRepository  extends CrudRepository<Page,Integer> {
     @Query(nativeQuery = true,value = "delete from page  where site_id=:siteId")
     void deleteBySite(@Param("siteId") Integer siteId);
 
-
-    List<Page> findBySite(Site site);
+;
 }

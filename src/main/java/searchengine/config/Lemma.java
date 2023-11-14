@@ -15,8 +15,10 @@ public class Lemma {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(name = "site_id",columnDefinition = "INT NOT NULL")
-    private Integer siteId;
+    @ManyToOne
+    @JoinColumn(name = "site_id", nullable = false)
+    private Site site;
+
 
     @Column(name = "lemma", columnDefinition = "VARCHAR(255) NOT NULL")
     private String lemma;

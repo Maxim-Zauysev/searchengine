@@ -29,23 +29,16 @@ public class ApiController {
         this.indexingService = indexingService;
     }
 
-    @GetMapping("/statistics")
-    public ResponseEntity<StatisticsResponse> statistics() {
-        return ResponseEntity.ok(statisticsService.getStatistics());
-    }
-
     @GetMapping("/startIndexing")
     public ResponseEntity<String> startIndexing() {
         indexingService.startIndexing();
         return ResponseEntity.ok("Индексация запущена.");
     }
 
-    //TODO:stopIndexing
-//    @GetMapping("/stopIndexing")
-//    public ResponseEntity<String> stopIndexing() {
-//        indexingService.stopIndexing();
-//        return ResponseEntity.ok("Индексация остановлена.");
-//    }
+    @GetMapping("/statistics")
+    public ResponseEntity<StatisticsResponse> statistics() {
+        return ResponseEntity.ok(statisticsService.getStatistics());
+    }
 
     @PostMapping("/indexPage")
     public ResponseEntity<?> indexPage(@RequestParam("url") String url) {

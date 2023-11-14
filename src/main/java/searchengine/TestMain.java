@@ -1,7 +1,5 @@
 package searchengine;
 
-import searchengine.config.TextAnalyzer;
-
 import java.util.Map;
 
 public class TestMain {
