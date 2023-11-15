@@ -3,16 +3,11 @@ package searchengine.services.impl;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
-import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
-import org.jsoup.Jsoup;
-import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
@@ -20,7 +15,6 @@ import org.jsoup.select.Elements;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-import org.springframework.transaction.annotation.Transactional;
 import searchengine.TextAnalyzer;
 import searchengine.config.*;
 import searchengine.repository.IndexRepository;
@@ -31,7 +25,9 @@ import searchengine.services.IndexingService;
 import searchengine.services.TransactionalService;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,6 +49,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final SitesList sites;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
     private final TextAnalyzer textAnalyzer = new TextAnalyzer();
+    private final ConcurrentHashMap<Future, Site> activeIndexingTasks = new ConcurrentHashMap<>();
 
     @Override
     public void indexPage(String url) {
@@ -66,10 +63,18 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    //TODO:
     @Override
     public void stopIndexing() {
-
+        // Interrupt all running tasks
+        for (Map.Entry<Future, Site> entry : activeIndexingTasks.entrySet()) {
+            entry.getKey().cancel(true); // Interrupt the task
+            Site site = entry.getValue();
+            site.setStatus(SiteStatus.FAILED);
+            site.setLastError("Индексация остановлена пользователем");
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site); // Update the site status in the database
+        }
+        activeIndexingTasks.clear(); // Clear the list of active tasks
     }
 
     @Override
@@ -82,7 +87,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     void processSite(Site site) {
         try {
-            transactionalService.deleteSiteAndPages(site);
+            transactionalService.deleteSiteInfo(site);
 
             site.setStatus(SiteStatus.INDEXING);
             site.setStatusTime(LocalDateTime.now());
@@ -97,7 +102,6 @@ public class IndexingServiceImpl implements IndexingService {
 
             for (Element link : links) {
                 String url = link.absUrl("href");
-
                 if (url.startsWith(savedSite.getUrl()) && !pageRepository.existsByPath(url)) {
                     forkJoinPool.submit(() -> processPage(savedSite, url));
                 }
@@ -135,12 +139,41 @@ public class IndexingServiceImpl implements IndexingService {
 
             pageRepository.save(page);
 
+            Map<String, Integer> lemmasCount = textAnalyzer.analyzeText(textAnalyzer.removeHtmlTags(htmlContent));
+            saveLemmasAndIndexes(site, page, lemmasCount);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    private void saveLemmasAndIndexes(Site site, Page page, Map<String, Integer> lemmasCount) {
+        for (Map.Entry<String, Integer> entry : lemmasCount.entrySet()) {
+            String lemmaString = entry.getKey();
+            Integer count = entry.getValue();
+
+            List<Lemma> existingLemmas = lemmaRepository.findByLemmaAndSite(lemmaString, site);
+
+            Lemma lemma;
+            if (existingLemmas.isEmpty()) {
+                lemma = new Lemma();
+                lemma.setLemma(lemmaString);
+                lemma.setFrequency(1);
+                lemma.setSite(site);
+            } else {
+                // Assuming the first match is what you need or handle duplicates appropriately
+                lemma = existingLemmas.get(0);
+                lemma.setFrequency(lemma.getFrequency() + 1);
+            }
+            lemmaRepository.save(lemma);
+
+            Index index = new Index();
+            index.setLemma(lemma);
+            index.setPage(page);
+            index.setRank(count.floatValue());
+            indexRepository.save(index);
+        }
+    }
 
     public static String extractSiteName(String url) {
         try {

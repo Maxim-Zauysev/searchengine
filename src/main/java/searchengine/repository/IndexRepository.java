@@ -12,5 +12,7 @@ import java.util.List;
 
 @Repository
 public interface IndexRepository extends CrudRepository<Index,Integer> {
-
+    @Modifying
+    @Query(value = "DELETE FROM index_table WHERE page_id IN (SELECT id FROM page WHERE site_id = ?1)", nativeQuery = true)
+    void deleteBySite(Integer siteId);
 }

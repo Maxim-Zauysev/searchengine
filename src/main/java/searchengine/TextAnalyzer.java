@@ -22,27 +22,45 @@ public class TextAnalyzer {
 
     public Map<String, Integer> analyzeText(String text) {
         Map<String, Integer> wordCount = new HashMap<>();
-        String[] words = text.toLowerCase().replaceAll("[^а-я\\s]", "").split("\\s+");
+        // Разрешаем буквы, пробелы и дефисы
+        String[] words = text.toLowerCase().replaceAll("[^а-я\\s-]", "").split("\\s+");
 
         for (String word : words) {
-            if (luceneMorph.checkString(word)) {
-                try {
-                    List<String> wordInfo = luceneMorph.getMorphInfo(word);
+            // Пропускаем слишком короткие слова
+            if (word.length() < 3) continue;
 
-                    if (!wordInfo.stream().anyMatch(info -> info.contains("СОЮЗ") || info.contains("ПРЕДЛ") || info.contains("МЕЖД"))) {
-                        List<String> wordBaseForms = luceneMorph.getNormalForms(word);
-                        if (!wordBaseForms.isEmpty()) {
-                            String baseForm = wordBaseForms.get(0);
-                            wordCount.put(baseForm, wordCount.getOrDefault(baseForm, 0) + 1);
-                        }
-                    }
-                } catch (ArrayIndexOutOfBoundsException e) {
-                    System.err.println("Unable to get morph info for word: " + word);
+            // Обработка слов с дефисом
+            if (word.contains("-")) {
+                String[] parts = word.split("-");
+                for (String part : parts) {
+                    processWord(part, wordCount);
                 }
+                continue;
             }
+
+            // Обычная обработка слова
+            processWord(word, wordCount);
         }
         return wordCount;
     }
+
+    private void processWord(String word, Map<String, Integer> wordCount) {
+        if (luceneMorph.checkString(word)) {
+            try {
+                List<String> wordInfo = luceneMorph.getMorphInfo(word);
+                if (!wordInfo.stream().anyMatch(info -> info.contains("СОЮЗ") || info.contains("ПРЕДЛ") || info.contains("МЕЖД"))) {
+                    List<String> wordBaseForms = luceneMorph.getNormalForms(word);
+                    if (!wordBaseForms.isEmpty()) {
+                        String baseForm = wordBaseForms.get(0);
+                        wordCount.put(baseForm, wordCount.getOrDefault(baseForm, 0) + 1);
+                    }
+                }
+            } catch (ArrayIndexOutOfBoundsException e) {
+                System.err.println("Unable to get morph info for word: " + word);
+            }
+        }
+    }
+
 
     public String removeHtmlTags(String html) {
         Document doc = Jsoup.parse(html);
