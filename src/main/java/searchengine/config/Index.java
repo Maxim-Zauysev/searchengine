@@ -26,4 +26,13 @@ public class Index {
     private Float rank;
 
 
+    @Override
+    public String toString() {
+        return "Index{" +
+                "id=" + id +
+                ", page=" + page +
+                ", lemma=" + lemma +
+                ", rank=" + rank +
+                '}';
+    }
 }

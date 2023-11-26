@@ -26,6 +26,7 @@ import searchengine.services.TransactionalService;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
@@ -45,6 +46,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final IndexRepository indexRepository;
     @Autowired
     private TransactionalService transactionalService;
+
 
     private final SitesList sites;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
@@ -91,7 +93,8 @@ public class IndexingServiceImpl implements IndexingService {
 
             site.setStatus(SiteStatus.INDEXING);
             site.setStatusTime(LocalDateTime.now());
-            Site savedSite = siteRepository.save(site);
+            siteRepository.save(site);
+
 
             Document doc = Jsoup.connect(site.getUrl())
                     .userAgent("HeliontSearchBot")
@@ -99,16 +102,28 @@ public class IndexingServiceImpl implements IndexingService {
                     .get();
 
             Elements links = doc.select("a[href]");
+            CountDownLatch latch = new CountDownLatch(links.size());
 
             for (Element link : links) {
                 String url = link.absUrl("href");
-                if (url.startsWith(savedSite.getUrl()) && !pageRepository.existsByPath(url)) {
-                    forkJoinPool.submit(() -> processPage(savedSite, url));
+                if (url.startsWith(site.getUrl()) && !pageRepository.existsByPath(url)) {
+                    forkJoinPool.submit(() -> {
+                        try {
+                            processPage(site, url);
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
+                } else {
+                    latch.countDown();
                 }
             }
 
-            savedSite.setStatus(SiteStatus.INDEXED);
-            savedSite.setStatusTime(LocalDateTime.now());
+            latch.await(); // Ожидаем завершения индексации всех страниц
+            site.setStatus(SiteStatus.INDEXED);
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
+
         } catch (Exception e) {
             site.setStatus(SiteStatus.FAILED);
             site.setLastError(e.getMessage());

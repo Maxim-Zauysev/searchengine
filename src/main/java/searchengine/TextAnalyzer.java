@@ -1,4 +1,5 @@
 package searchengine;
+
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.nodes.Document;
@@ -22,51 +23,31 @@ public class TextAnalyzer {
 
     public Map<String, Integer> analyzeText(String text) {
         Map<String, Integer> wordCount = new HashMap<>();
-        // Разрешаем буквы, пробелы и дефисы
-        String[] words = text.toLowerCase().replaceAll("[^а-я\\s-]", "").split("\\s+");
+        String[] words = text.toLowerCase().replaceAll("[^а-я\\s]", "").split("\\s+");
 
         for (String word : words) {
-            // Пропускаем слишком короткие слова
-            if (word.length() < 3) continue;
+            if (luceneMorph.checkString(word)) {
+                try {
+                    List<String> wordInfo = luceneMorph.getMorphInfo(word);
 
-            // Обработка слов с дефисом
-            if (word.contains("-")) {
-                String[] parts = word.split("-");
-                for (String part : parts) {
-                    processWord(part, wordCount);
+                    if (!wordInfo.stream().anyMatch(info -> info.contains("СОЮЗ") || info.contains("ПРЕДЛ") || info.contains("МЕЖД"))) {
+                        List<String> wordBaseForms = luceneMorph.getNormalForms(word);
+                        if (!wordBaseForms.isEmpty()) {
+                            String baseForm = wordBaseForms.get(0);
+                            wordCount.put(baseForm, wordCount.getOrDefault(baseForm, 0) + 1);
+                        }
+                    }
+                } catch (ArrayIndexOutOfBoundsException e) {
+                    System.err.println("Unable to get morph info for word: " + word);
                 }
-                continue;
             }
-
-            // Обычная обработка слова
-            processWord(word, wordCount);
         }
         return wordCount;
     }
 
-    private void processWord(String word, Map<String, Integer> wordCount) {
-        if (luceneMorph.checkString(word)) {
-            try {
-                List<String> wordInfo = luceneMorph.getMorphInfo(word);
-                if (!wordInfo.stream().anyMatch(info -> info.contains("СОЮЗ") || info.contains("ПРЕДЛ") || info.contains("МЕЖД"))) {
-                    List<String> wordBaseForms = luceneMorph.getNormalForms(word);
-                    if (!wordBaseForms.isEmpty()) {
-                        String baseForm = wordBaseForms.get(0);
-                        wordCount.put(baseForm, wordCount.getOrDefault(baseForm, 0) + 1);
-                    }
-                }
-            } catch (ArrayIndexOutOfBoundsException e) {
-                System.err.println("Unable to get morph info for word: " + word);
-            }
+        public String removeHtmlTags(String html) {
+            Document doc = Jsoup.parse(html);
+            String text = doc.text();
+            return text;
         }
-    }
-
-
-    public String removeHtmlTags(String html) {
-        Document doc = Jsoup.parse(html);
-        String text = doc.text();
-        return text;
-    }
 }
-
-

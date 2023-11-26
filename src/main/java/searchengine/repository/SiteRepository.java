@@ -27,4 +27,6 @@ public interface SiteRepository extends CrudRepository<Site, Integer> {
     @Modifying
     @Query(nativeQuery = true, value = "DELETE FROM site WHERE id = :id")
     void deleteSiteById(@Param("id") Integer id);
+
+    Site findByUrl(String site);
 }
